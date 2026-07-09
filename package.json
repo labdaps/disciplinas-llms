@@ -1,0 +1,23 @@
+{
+  "name": "disciplinas-llms",
+  "version": "1.0.0",
+  "description": "Dashboard para mapear sobreposicao de conteudo entre disciplinas academicas usando modelos de linguagem (LLMs).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/labdaps/disciplinas-llms.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/labdaps/disciplinas-llms/issues"
+  },
+  "homepage": "https://github.com/labdaps/disciplinas-llms#readme",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

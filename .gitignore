@@ -1,7 +1,8 @@
 .env
 data/disciplinas.db
-data/*.csv
-data/*.json
+data/disciplinas_raw.csv
+node_modules/
+package-lock.json
 __pycache__/
 *.pyc
 .venv/
