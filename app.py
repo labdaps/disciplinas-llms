@@ -136,6 +136,14 @@ div[data-testid="stHorizontalBlock"] button {
 # ── dados ─────────────────────────────────────────────────────────────────────
 
 DATA_PATH = Path(__file__).parent / "data" / "disciplinas.json"
+GRAPH_PATH = Path(__file__).parent / "data" / "graph_saude_publica.json"
+
+
+@st.cache_data
+def carregar_grafo():
+    if not GRAPH_PATH.exists():
+        return None
+    return json.loads(GRAPH_PATH.read_text("utf-8"))
 
 @st.cache_data
 def carregar_dados() -> pd.DataFrame:
@@ -313,8 +321,8 @@ if st.session_state.modo_explorar:
 </div>
 """, unsafe_allow_html=True)
 
-    tab_mapa, tab_heat, tab_comp, tab_dados = st.tabs(
-        ["🗺 Mapa Temático", "🔥 Heatmap", "🔍 Comparar disciplinas", "📋 Dados"]
+    tab_mapa, tab_grafo, tab_heat, tab_comp, tab_dados = st.tabs(
+        ["🗺 Mapa Temático", "🕸 Grafo", "🔥 Heatmap", "🔍 Comparar disciplinas", "📋 Dados"]
     )
 
     with tab_mapa:
@@ -355,6 +363,68 @@ if st.session_state.modo_explorar:
             fig3.update_layout(font=dict(family="Inter", color="#0f1730"),
                                paper_bgcolor="#fff", showlegend=False, margin=dict(l=0,r=0,t=0,b=0))
             st.plotly_chart(fig3, use_container_width=True)
+
+    with tab_grafo:
+        grafo = carregar_grafo()
+        if grafo is None:
+            st.info("Grafo nao encontrado. Execute: `python scripts/build_graph.py`")
+        else:
+            CORES = px.colors.qualitative.Safe
+            nos = grafo["nos"]
+            arestas = grafo["arestas"]
+
+            threshold_ui = st.slider("Similaridade minima", 0.25, 0.70, 0.30, 0.05, key="graph_thresh")
+            arestas_fil = [a for a in arestas if a["sim"] >= threshold_ui]
+
+            # Usar coordenadas pré-calculadas (spring layout)
+            coords = {n["id"]: (n["x"], n["y"]) for n in nos}
+
+            edge_x, edge_y = [], []
+            for a in arestas_fil:
+                x0, y0 = coords[a["source"]]
+                x1, y1 = coords[a["target"]]
+                edge_x += [x0, x1, None]
+                edge_y += [y0, y1, None]
+
+            cluster_ids = sorted(set(n["cluster"] for n in nos))
+            membros_por_cluster = {cid: [n for n in nos if n["cluster"] == cid] for cid in cluster_ids}
+
+            fig_g = go.Figure()
+            fig_g.add_trace(go.Scatter(
+                x=edge_x, y=edge_y, mode="lines",
+                line=dict(width=0.6, color="#d0d5e8"),
+                hoverinfo="none", showlegend=False,
+            ))
+            for cid in cluster_ids:
+                membros = membros_por_cluster[cid]
+                cor = CORES[cid % len(CORES)]
+                fig_g.add_trace(go.Scatter(
+                    x=[coords[n["id"]][0] for n in membros],
+                    y=[coords[n["id"]][1] for n in membros],
+                    mode="markers+text",
+                    marker=dict(size=[8 + n["grau"] * 0.5 for n in membros], color=cor, opacity=0.85,
+                                line=dict(width=0.5, color="#fff")),
+                    text=["" if n["grau"] < 10 else n["nome"].split()[0] for n in membros],
+                    textposition="top center",
+                    textfont=dict(size=9),
+                    customdata=[n["nome"] for n in membros],
+                    hovertemplate="<b>%{customdata}</b><br>%{meta}<br>Grau: %{marker.size}<extra></extra>",
+                    meta=[n["departamento"] for n in membros],
+                    name=f"Cluster {cid + 1} ({len(membros)})",
+                ))
+
+            fig_g.update_layout(
+                height=600,
+                paper_bgcolor="#fff", plot_bgcolor="#f8f9fc",
+                font=dict(family="Inter", color="#0f1730"),
+                showlegend=True,
+                legend=dict(orientation="v", x=1.01, y=1, font=dict(size=11)),
+                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                margin=dict(l=0, r=0, t=10, b=0),
+            )
+            st.plotly_chart(fig_g, use_container_width=True)
+            st.caption(f"{len(nos)} disciplinas, {len(arestas_fil)} conexoes (sim >= {threshold_ui}), {grafo['n_clusters']} clusters")
 
     with tab_heat:
         max_d = 40
