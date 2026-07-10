@@ -137,6 +137,7 @@ div[data-testid="stHorizontalBlock"] button {
 
 DATA_PATH = Path(__file__).parent / "data" / "disciplinas.json"
 GRAPH_PATH = Path(__file__).parent / "data" / "graph_saude_publica.json"
+UMAP_PATH  = Path(__file__).parent / "data" / "umap_saude_publica.json"
 
 
 @st.cache_data
@@ -144,6 +145,13 @@ def carregar_grafo():
     if not GRAPH_PATH.exists():
         return None
     return json.loads(GRAPH_PATH.read_text("utf-8"))
+
+
+@st.cache_data
+def carregar_umap():
+    if not UMAP_PATH.exists():
+        return None
+    return json.loads(UMAP_PATH.read_text("utf-8"))
 
 @st.cache_data
 def carregar_dados() -> pd.DataFrame:
@@ -321,8 +329,8 @@ if st.session_state.modo_explorar:
 </div>
 """, unsafe_allow_html=True)
 
-    tab_mapa, tab_grafo, tab_heat, tab_comp, tab_dados = st.tabs(
-        ["🗺 Mapa Temático", "🕸 Grafo", "🔥 Heatmap", "🔍 Comparar disciplinas", "📋 Dados"]
+    tab_mapa, tab_grafo, tab_umap, tab_heat, tab_comp, tab_dados = st.tabs(
+        ["🗺 Mapa Temático", "🕸 Grafo", "🔵 UMAP", "🔥 Heatmap", "🔍 Comparar disciplinas", "📋 Dados"]
     )
 
     with tab_mapa:
@@ -425,6 +433,69 @@ if st.session_state.modo_explorar:
             )
             st.plotly_chart(fig_g, use_container_width=True)
             st.caption(f"{len(nos)} disciplinas, {len(arestas_fil)} conexoes (sim >= {threshold_ui}), {grafo['n_clusters']} clusters")
+
+    with tab_umap:
+        umap_data = carregar_umap()
+        if umap_data is None:
+            st.info("UMAP nao encontrado. Execute: `python scripts/build_umap.py`")
+        else:
+            pontos = umap_data["pontos"]
+            CORES = px.colors.qualitative.Safe + px.colors.qualitative.Pastel
+
+            fig_u = go.Figure()
+
+            # Ruido (cluster -1) em cinza
+            ruido = [p for p in pontos if p["cluster"] == -1]
+            if ruido:
+                fig_u.add_trace(go.Scatter(
+                    x=[p["x"] for p in ruido],
+                    y=[p["y"] for p in ruido],
+                    mode="markers",
+                    marker=dict(size=6, color="#ccc", opacity=0.5),
+                    customdata=[p["nome"] for p in ruido],
+                    hovertemplate="<b>%{customdata}</b><extra>ruido</extra>",
+                    name=f"Sem cluster ({len(ruido)})",
+                    showlegend=True,
+                ))
+
+            # Clusters
+            cluster_ids = sorted(set(p["cluster"] for p in pontos if p["cluster"] >= 0))
+            for cid in cluster_ids:
+                grp = [p for p in pontos if p["cluster"] == cid]
+                cor = CORES[cid % len(CORES)]
+                fig_u.add_trace(go.Scatter(
+                    x=[p["x"] for p in grp],
+                    y=[p["y"] for p in grp],
+                    mode="markers",
+                    marker=dict(size=9, color=cor, opacity=0.85,
+                                line=dict(width=0.5, color="#fff")),
+                    customdata=[[p["nome"], p["departamento"], p["ementa"]] for p in grp],
+                    hovertemplate=(
+                        "<b>%{customdata[0]}</b><br>"
+                        "<i>%{customdata[1]}</i><br>"
+                        "%{customdata[2]}<extra></extra>"
+                    ),
+                    name=f"Cluster {cid + 1} ({len(grp)})",
+                ))
+
+            fig_u.update_layout(
+                height=600,
+                paper_bgcolor="#fff", plot_bgcolor="#f8f9fc",
+                font=dict(family="Inter", color="#0f1730"),
+                showlegend=True,
+                legend=dict(orientation="v", x=1.01, y=1, font=dict(size=10)),
+                xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, title="UMAP 1"),
+                yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, title="UMAP 2"),
+                margin=dict(l=0, r=0, t=10, b=0),
+            )
+            st.plotly_chart(fig_u, use_container_width=True)
+            st.caption(
+                f"{umap_data['n_pontos']} disciplinas, "
+                f"{umap_data['n_clusters']} clusters HDBSCAN, "
+                f"{umap_data['n_ruido']} sem cluster. "
+                f"Params: n_neighbors={umap_data['params']['n_neighbors']}, "
+                f"min_cluster_size={umap_data['params']['min_cluster_size']}"
+            )
 
     with tab_heat:
         max_d = 40
